@@ -44,12 +44,10 @@ class CatViewController: UIViewController, UIScrollViewDelegate {
     @IBOutlet weak var welcomeLabel: UILabel!
     @IBOutlet weak var activityIndicator: UIActivityIndicatorView!
     
+    let queue = DispatchQueue.main
+    let group = DispatchGroup()
     var name: String = "Guest"
-    var pokemons: [Pokemon] = [] {
-        didSet {
-            self.updateUI()
-        }
-    }
+    var pokemons: [Pokemon] = []
     var offset = 0
     
     override func viewDidLoad() {
@@ -69,12 +67,17 @@ class CatViewController: UIViewController, UIScrollViewDelegate {
             switch response.result {
                 case let .success(data):
                     for item in data.results {
+                        self.group.enter()
                         self.fetchPokemonDetail(item)
                     }
-                    self.activityIndicator.stopAnimating()
-                    self.scrollView.isHidden = false
-                    self.welcomeLabel.text = "Hi \(self.name )!\n\(Constants.Loader.loaded)"
-                    self.updateUI()
+                    
+                    self.group.notify(queue: self.queue) {
+                        self.activityIndicator.stopAnimating()
+                        self.scrollView.isHidden = false
+                        self.welcomeLabel.text = "Hi \(self.name )!\n\(Constants.Loader.loaded)"
+                        self.updateUI()
+                    }
+                    
                 case let .failure(error):
                     print(error)
             }
@@ -83,16 +86,22 @@ class CatViewController: UIViewController, UIScrollViewDelegate {
     
     func fetchPokemonDetail(_ pokemon: AFPokemon)  {
         guard let url = pokemon.url else {
+            group.leave()
             return
         }
-        AF.request(url).validate().responseDecodable(of: Pokemon.self) { (response) in
+        queue.async {
+            AF.request(url).validate().responseDecodable(of: Pokemon.self) { (response) in
                 switch response.result {
                 case let .success(data):
                     self.pokemons.append(Pokemon(name: data.name, id: data.id, sprites: data.sprites))
+                    self.group.leave()
                 case let .failure(error):
                     print(error)
+                    self.group.leave()
                 }
             }
+        }
+        
     }
 
     func updateUI() {
